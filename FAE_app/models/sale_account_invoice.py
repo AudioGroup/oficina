@@ -298,7 +298,7 @@ class FaeAccountInvoice(models.Model):
                             and self.partner_id.x_exo_exoneration_number and self.partner_id.x_exo_institution_name) ):
                 raise UserError('El cliente es exonerado pero no han ingresado los datos de la exoneración')
             # recalcula lineas (si existen)
-            if self.line_ids:
+            if self.line_ids and self._origin.partner_id != self.partner_id:
                 for line in self.line_ids:
                     line._onchange_product_id()
                     line._onchange_price_subtotal()
@@ -376,42 +376,79 @@ class FaeAccountInvoice(models.Model):
                 if rec:
                     self.x_reference_document_type_id = rec.id
 
+    @api.model
+    def compute_name_value(self):
+        if not self.x_document_type and self.name == '/':
+            seq_code = None
+            values = {}
+            if self.move_type == 'out_refund':
+                seq_code = 'xfae_number_internal_invoice_rev'
+                values['name'] = 'xFAE - Number for Internal Reversal Invoice'
+                values['prefix'] = 'RINV-'
+            elif 'out_' in self.move_type:
+                seq_code = 'xfae_number_internal_invoice'
+                values['name'] = 'xFAE - Number for Internal Invoice'
+                values['prefix'] = 'INV-'
+            elif self.move_tpe == 'in_refund':
+                seq_code = 'xfae_number_internal_bill_rev'
+                values['name'] = 'xFAE - Number for Internal Reversal Bill'
+                values['prefix'] = 'RBILL-'
+            elif 'in_' in self.move_type:
+                seq_code = 'xfae_number_internal_bill'
+                values['name'] = 'xFAE - Number for Internal Bill'
+                values['prefix'] = 'BILL-'
+            if seq_code:
+                sequence = self.env['ir.sequence'].search([('code', '=', seq_code), ('company_id', '=', self.company_id.id)])
+                if not sequence:
+                    values.update({'company_id': self.company_id.id,
+                                    'code': seq_code,
+                                    'active': True,
+                                    'padding': 6,
+                                    'number_next': 1,
+                                    'number_increment': 1})
+                    sequence = self.env['ir.sequence'].sudo().create(values)
+                self.name = sequence.next_by_id()
+                numero = self.name
+
 
     def action_post(self):
         # _logger.info('>> action_post: entro')
         for inv in self:
             if not inv.is_invoice() or inv.x_state_dgt:
+                inv.compute_name_value()
                 super(FaeAccountInvoice, inv).action_post()
                 continue
             else:
                 gen_doc_electronico = False
                 if inv.company_id.x_fae_mode in ('api-stag', 'api-prod'):
-                    if (inv.move_type in ('out_invoice','out_refund')
-                        or inv.move_type == 'in_invoice' and inv.x_document_type == 'FEC'):
+                    if ((inv.move_type in ('out_invoice','out_refund') and inv.x_document_type)
+                            or (inv.move_type == 'in_invoice' and inv.x_document_type == 'FEC')):
                         gen_doc_electronico = True
-                
+
                 if not gen_doc_electronico:
                     if inv.move_type in ('in_invoice','in_refund') and inv.x_fae_incoming_doc_id:
                         inv.x_state_dgt = inv.x_fae_incoming_doc_id.state_response_dgt
+                    inv.compute_name_value()
                     super(FaeAccountInvoice, inv).action_post()
+                    inv.payment_reference = None
                     continue
 
                 else:
                     # Son documentos Electrónicos Emitidos a Cliente o
                     #  una factura electrónica de compra
-                    if inv.is_sale_document():
+                    if inv.is_sale_document() and inv.x_document_type:
                         if inv.partner_id and inv.partner_id.vat and not inv.partner_id.x_identification_type_id:
                             raise UserError('Debe indicar el tipo de identificación del cliente')
                         if inv.move_type == 'out_invoice' and not inv.x_payment_method_id:
                             raise UserError('Debe indicar el método de pago')
                         if inv.move_type == 'out_refund' and not inv.x_reference_code_id:
                             raise  UserError('Debe indicar el motivo de referencia ')
-                    elif inv.x_document_type:
+                    elif inv.is_purchase_document() and inv.x_document_type:
                         # is_purchase_document() con un documento electrónico seleccionado:
                         if not inv.partner_id:
-                            raise UserError('Para documentos electrónicos debe seleccionar un proveedor (contacto)')  
+                            raise UserError('Para documentos electrónicos debe seleccionar un proveedor (contacto)')
                         if inv.partner_id.vat and not inv.partner_id.x_identification_type_id:
-                            raise UserError('Debe indicar el tipo de identificación del proveedor') 
+                            raise UserError('Debe indicar el tipo de identificación del proveedor')
                         if inv.x_document_type == 'FEC':
                             if not (inv.partner_id.state_id and inv.partner_id.x_country_county_id and inv.partner_id.x_country_district_id):
                                 raise UserError('Para Facturas Electrónicas de Compra, debe indicar la Dirección del proveedor (Provincia, Cantón y Distrito)')
@@ -433,14 +470,14 @@ class FaeAccountInvoice(models.Model):
                     # verifica si existe un tipo de cambio 
                     if inv.currency_id.name != inv.company_id.currency_id.name  and (not inv.currency_id.rate_ids or not (len(inv.currency_id.rate_ids) > 0)):
                         raise UserError(_('No hay tipo de cambio registrado para la moneda %s' % (inv.currency_id.name)))
-                    
-                    if ((inv.x_reference_code_id or inv.x_reference_document_type_id) 
+
+                    if ((inv.x_reference_code_id or inv.x_reference_document_type_id)
                         and (not inv.x_is_external_reference and not inv.x_invoice_reference_id)):
                         raise UserError('Datos de referencia no están completos')
 
                     if inv.x_is_external_reference and (not inv.x_ext_reference_num or not inv.x_ext_reference_date):
                         raise UserError('Cuando la referencia es externa a odoo deben llenarse los datos de referencia')
-                    
+
                     if inv.x_document_type:
                         # Revisa las líneas para verificar que los artículos tiene código CAByS
                         for line in inv.invoice_line_ids:
@@ -453,13 +490,13 @@ class FaeAccountInvoice(models.Model):
                                 if not (line.product_id.x_cabys_code_id and line.product_id.x_cabys_code_id.code):
                                     raise UserError('El artículo: %s no tiene código CAByS' % (line.product_id.default_code or line.product_id.name) )
                             elif line.product_id and line.product_id.type != 'service' and not line.product_id.x_tariff_heading:
-                                raise UserError('El artículo: %s no tiene partida arancelaria y es requerida en facturas de Exportación' 
+                                raise UserError('El artículo: %s no tiene partida arancelaria y es requerida en facturas de Exportación'
                                                 % (line.product_id.default_code or line.product_id.name) )
-                            
+
                             # es ha sido un error común en los clientes
                             es_servicio = (line.product_id.type == 'service' or line.product_uom_id.category_id.name in ('Services', 'Servicios'))
                             if line.product_uom_id.x_code_dgt == 'Unid' and es_servicio:
-                                raise UserError('El artículo: %s es de tipo servicio, pero tiene la unidad: %s ' 
+                                raise UserError('El artículo: %s es de tipo servicio, pero tiene la unidad: %s '
                                                 % ((line.product_id.default_code or line.product_id.name), line.product_uom_id.name) )
 
                     if not inv.invoice_date:
@@ -479,7 +516,7 @@ class FaeAccountInvoice(models.Model):
                     # Aplica el movimiento en Odoo
                     super(FaeAccountInvoice, inv).action_post()
 
-                    if not (inv.x_electronic_code50 or inv.x_sequence): 
+                    if not (inv.x_electronic_code50 or inv.x_sequence):
                         if inv.move_type == 'out_invoice': # Factura a Cliente
                             if inv.x_document_type == 'FE' and (not inv.partner_id.vat or inv.partner_id.x_identification_type_id.code == 'E'):
                                 inv.x_document_type = 'TE'
