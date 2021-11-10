@@ -18,7 +18,7 @@
         'reports/sale_order_templates.xml',
         #'reports/purchase_order_templates.xml',
         #'reports/sale_report_templates.xml',
-        #'reports/report_invoice.xml',
+        'reports/report_invoice.xml',
         #'reports/report_payment_receipt_templates.xml',
     ],
     'demo': [

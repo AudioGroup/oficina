@@ -1,52 +1,64 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <template id="report_invoice_document_inherit_rroma" inherit_id="account.report_invoice_document" priority="99">
-        <xpath expr="//t[contains(@t-if, 'line.tax_line_id')]/td/span[@t-esc='amount_by_group[0]']" position="replace">
-            <span>Tax</span>
-        </xpath>
-        <xpath expr="//span[@t-esc='amount_by_group[0]']" position="replace">
-            <span>Tax</span>
-        </xpath>
 
-        <!-- Centering Table Header -->
-        <xpath expr="//th[@name='th_description']" position="attributes">
-          <attribute name="class">text-center</attribute>
-        </xpath>
-        <xpath expr="//th[@name='th_source']" position="attributes">
-          <attribute name="class">text-center</attribute>
-        </xpath>
-        <xpath expr="//th[@name='th_quantity']" position="attributes">
-          <attribute name="class">text-center</attribute>
-        </xpath>
-        <xpath expr="//th[@name='th_subtotal']" position="attributes">
-          <attribute name="class">text-center</attribute>
-        </xpath>
-        <xpath expr="//th[@name='th_priceunit']" position="attributes">
-          <attribute name="t-attf-class">text-center {{ 'd-none d-md-table-cell' if report_type == 'html' else '' }}</attribute>
-        </xpath>
-        <xpath expr="//th[@name='th_price_unit']" position="attributes">
-          <attribute name="t-attf-class">text-center {{ 'd-none d-md-table-cell' if report_type == 'html' else '' }}</attribute>
-        </xpath>
+  <template id="fae_report_invoice_document_audiogroup" inherit_id="FAE_app.fae_report_invoice_document_inherited" priority="20">
+      <xpath expr="//div[hasclass('header')]" position="replace">
+        <div class="header" style="font-family:sans-serif;font-size:14px;">
+          <div class="row mt32 mb32">
+              <div class="col-6">
+                  <img t-if="company.logo" t-att-src="'data:image/png;base64,%s' % to_text(company.logo)" style="max-height: 100px;"/>
+              </div>
+              <div class="col-6 text-right" style="font:12px lucida-console,sans-serif !important;">
+                  <span t-field="company.partner_id"/>
+                  <br/>
+                  <span t-field="company.x_commercial_name"/>
+                  <br/>
+                  Cédula Jurídica: <span t-field="company.partner_id.vat"/>
+                  <br/>
+                  Teléfono: <span t-field="company.partner_id.phone"/>
+                  <br/>
+                  <span t-field="company.partner_id.email"/>
+                  <br/>
+                  <span t-field="company.partner_id.country_id"/>,<span t-field="company.partner_id.state_id"/>
+                  <br/>
+                  <span t-field="company.partner_id.street"/>
+                  <br/>
+                  <span t-field="company.partner_id.street2"/>
+              </div>
+          </div>
+        </div>
+      </xpath>
+      <div id="informations" position="before">
+        <div style=" background-color:  #3498DB;">
+            <h2>
+              <t t-if="o.x_electronic_code50 and o.x_document_type in ('FE','FEC','FEE','ND','NC')">
+                  <span style="font-weight:bolder" t-if="o.x_document_type=='FE'" >FACTURA ELECTRONICA: </span>
+                  <span style="font-weight:bolder" t-if="o.x_document_type=='FEC'">FACTURA DE COMPRA : </span>
+                  <span style="font-weight:bolder" t-if="o.x_document_type=='TE'" >TIQUETE ELECTRONICO: </span>
+                  <span style="font-weight:bolder" t-if="o.x_document_type=='NC'" >NOTA CREDITO ELECTRONICA:  </span>
+                  <span style="font-weight:bolder" t-if="o.x_document_type=='ND'" >NOTA DEBITO ELECTRONICA:</span>
+                  <t t-if="o.x_document_type=='FEE'">
+                      <span style="font-weight:bolder">FACTURA ELECTRONICA</span><br/>
+                      <span style="font-weight:bolder">DE EXPORTACION: </span>
+                  </t>
+              </t>
+              <t t-else="">
+                  <span style="font-weight:bolder">FACTURA: </span>
+              </t>
+              <t t-if="(o.move_type in ('out_invoice','out_refund') or o.x_document_type=='FEC') and o.x_sequence">
+                  <span style="font-size: 18px; font-weight:bold" t-esc="o.x_sequence and o.x_sequence or o.number"/>
+              </t>
+              <t t-else="">
+                  <span style="font-size: 18px;font-weight:bold" t-field="o.name"/>
+              </t>
+            </h2>
+            <t t-if="o.x_electronic_code50">
+                <span>Clave: </span>
+                <span style="font-size: 12px;" t-esc="o.x_electronic_code50" />
+                <br/>
+            </t>
+        </div>
+      </div>
+  </template>
 
-        <xpath expr="//div[@id='informations']" position="inside">
-            <div class="col-auto mw-100 mb-2" t-if="o.l10n_cr_edi_sale_condition" name="sale_condition">
-                <strong>Sale condition:</strong>
-                <p class="m-0" t-field="o.l10n_cr_edi_sale_condition"/>
-            </div>
-            <div class="col-auto mw-100 mb-2" t-if="o.invoice_payment_term_id" name="payment_term">
-                <strong>Payment term:</strong>
-                <p class="m-0" t-field="o.invoice_payment_term_id.name"/>
-            </div>
-            <div class="col-auto mw-100 mb-2" t-if="o.l10n_cr_edi_payment_method" name="payment_method">
-                <strong>Payment Method:</strong>
-                <p class="m-0" t-field="o.l10n_cr_edi_payment_method"/>
-            </div>
-        </xpath>
-    </template>
-
-
-    <template id="report_invoice_l10n_cr_edi_document_inherit_rroma" inherit_id="l10n_cr_edi.report_invoice_document_inherit" priority="99">
-        <xpath expr="//p[@name='l10n_cr_edi_resolution']" position="replace"/>
-        <xpath expr="//p[contains(text(), 'Puede consultar el documento')]" position="replace"/>
-    </template>
 </odoo>
