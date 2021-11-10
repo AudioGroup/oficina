@@ -32,30 +32,31 @@
         <div style=" background-color:  #3498DB;">
             <h2>
               <t t-if="o.x_electronic_code50 and o.x_document_type in ('FE','FEC','FEE','ND','NC')">
-                  <span style="font-weight:bolder" t-if="o.x_document_type=='FE'" >FACTURA ELECTRONICA: </span>
-                  <span style="font-weight:bolder" t-if="o.x_document_type=='FEC'">FACTURA DE COMPRA : </span>
-                  <span style="font-weight:bolder" t-if="o.x_document_type=='TE'" >TIQUETE ELECTRONICO: </span>
-                  <span style="font-weight:bolder" t-if="o.x_document_type=='NC'" >NOTA CREDITO ELECTRONICA:  </span>
-                  <span style="font-weight:bolder" t-if="o.x_document_type=='ND'" >NOTA DEBITO ELECTRONICA:</span>
+                  <span t-if="o.x_document_type=='FE'" >FACTURA ELECTRONICA: </span>
+                  <span t-if="o.x_document_type=='FEC'">FACTURA DE COMPRA : </span>
+                  <span t-if="o.x_document_type=='TE'" >TIQUETE ELECTRONICO: </span>
+                  <span t-if="o.x_document_type=='NC'" >NOTA CREDITO ELECTRONICA:  </span>
+                  <span t-if="o.x_document_type=='ND'" >NOTA DEBITO ELECTRONICA:</span>
                   <t t-if="o.x_document_type=='FEE'">
                       <span style="font-weight:bolder">FACTURA ELECTRONICA</span><br/>
                       <span style="font-weight:bolder">DE EXPORTACION: </span>
                   </t>
               </t>
               <t t-else="">
-                  <span style="font-weight:bolder">FACTURA: </span>
+                  <span >FACTURA: </span>
               </t>
               <t t-if="(o.move_type in ('out_invoice','out_refund') or o.x_document_type=='FEC') and o.x_sequence">
-                  <span style="font-size: 18px; font-weight:bold" t-esc="o.x_sequence and o.x_sequence or o.number"/>
+                  <span t-esc="o.x_sequence and o.x_sequence or o.number"/>
               </t>
               <t t-else="">
-                  <span style="font-size: 18px;font-weight:bold" t-field="o.name"/>
+                  <span t-field="o.name"/>
               </t>
             </h2>
             <t t-if="o.x_electronic_code50">
+              <h3>
                 <span>Clave: </span>
                 <span style="font-size: 12px;" t-esc="o.x_electronic_code50" />
-                <br/>
+              </h3>
             </t>
         </div>
       </div>
