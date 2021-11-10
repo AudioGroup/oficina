@@ -60,6 +60,51 @@
             </t>
         </div>
       </div>
+      <table id="t2_invoice_line_table" position="replace">
+        <table id="t2_invoice_line_table" name="invoice_line_table" cellspacing="0" class="tble">
+            <thead class="tble-header">
+                <tr>
+                    <th name="th_description" class="text-left">Producto</th>
+                    <th name="th_quantity" width="10%" class="text-right">Cantidad</th>
+                    <th name="th_priceunit" width="15%" class="text-right">Precio</th>
+                    <th t-if="display_discount" class="text-right">Disc.(%)</th>
+                    <th name="th_taxes" width="15%" class="text-right">Impuesto</th>
+                    <th name="th_subtotal" width="18%" class="text-right">Total</th>
+                </tr>
+            </thead>
+
+            <tbody class="invoice_tbody mt16 mb30" style="border-bottom: 1px solid #dee2e6">
+                <tr t-foreach="o.invoice_line_ids" t-as="l" id="t2_tr1" style="height:20px;">
+                    <t t-if="not l.display_type and l.price_unit" name="account_invoice_line_accountable">
+                        <td> <span t-field="l.name"/> </td>
+                        <td class="text-right">
+                            <span t-field="l.quantity"/>
+                            <span t-field="l.uom_id" groups="product.group_uom"/>
+                        </td>
+                        <td class="text-right"> <span t-field="l.price_unit"/> </td>
+                        <td t-if="display_discount" class="text-right">
+                            <span t-field="l.discount"/>
+                        </td>
+                        <td class="text-right">
+                            <span t-if="l.tax_ids" t-esc="', '.join(map(lambda x: (x.description or x.name), l.tax_ids))"/>
+                            <span t-if="not l.tax_ids">Ex</span>
+                        </td>
+                        <td class="text-right"> <span t-field="l.price_subtotal"/> </td>                                
+                    </t>
+                    <t t-if="l.display_type == 'line_note'">
+                        <td colspan="99">
+                            <span t-field="l.name" t-options="{'widget': 'text'}"/>
+                        </td>
+                    </t>
+                    <t t-if="l.display_type == 'line_section'">
+                        <td colspan="99">
+                            <span t-field="l.name" t-options="{'widget': 'text'}"/>
+                        </td>
+                    </t>
+                </tr>
+            </tbody>
+        </table>
+      </table>
   </template>
 
 </odoo>
