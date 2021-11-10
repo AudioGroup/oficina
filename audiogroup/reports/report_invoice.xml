@@ -29,7 +29,7 @@
         </div>
       </xpath>
       <div id="informations" position="before">
-        <div style=" background-color:  #3498DB;">
+        <div class="text-center" style=" background-color:  #3498DB;">
             <h2>
               <t t-if="o.x_electronic_code50 and o.x_document_type in ('FE','FEC','FEE','ND','NC')">
                   <span t-if="o.x_document_type=='FE'" >FACTURA ELECTRONICA: </span>
@@ -55,7 +55,7 @@
             <t t-if="o.x_electronic_code50">
               <h3>
                 <span>Clave: </span>
-                <span style="font-size: 12px;" t-esc="o.x_electronic_code50" />
+                <span t-esc="o.x_electronic_code50" />
               </h3>
             </t>
         </div>
