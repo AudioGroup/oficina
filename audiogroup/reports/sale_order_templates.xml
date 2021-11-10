@@ -8,7 +8,7 @@
             <t t-set="company" t-value="res_company"></t>
         </t>
 
-        <t t-call="web.external_layout_audiogroup">
+        <t t-call="audiogroup.external_layout_audiogroup">
 
         <!--t t-call="web.external_layout"-->
             <t t-set="o" t-value="doc.with_context({'lang':doc.partner_id.lang})"/>

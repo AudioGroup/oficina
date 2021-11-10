@@ -29,7 +29,7 @@
         </div>
       </xpath>
       <div id="informations" position="before">
-        <div class="text-center" style=" background-color:  #3498DB;">
+        <div class="text-center" style=" background-color:  #3498DB;"><font color="#fff">
             <h2>
               <t t-if="o.x_electronic_code50 and o.x_document_type in ('FE','FEC','FEE','ND','NC')">
                   <span t-if="o.x_document_type=='FE'" >FACTURA ELECTRONICA: </span>
@@ -53,16 +53,16 @@
               </t>
             </h2>
             <t t-if="o.x_electronic_code50">
-              <h3>
+              <h4>
                 <span>Clave: </span>
                 <span t-esc="o.x_electronic_code50" />
-              </h3>
-            </t>
+              </h4>
+            </t></font>
         </div>
       </div>
       <table id="t2_invoice_line_table" position="replace">
         <table id="t2_invoice_line_table" name="invoice_line_table" cellspacing="0" class="tble">
-            <thead class="tble-header">
+            <thead class="tble-header" style=" background-color:  #3498DB;"><font color="#fff">
                 <tr>
                     <th name="th_description" class="text-left">Producto</th>
                     <th name="th_quantity" width="10%" class="text-right">Cantidad</th>
@@ -71,6 +71,7 @@
                     <th name="th_taxes" width="15%" class="text-right">Impuesto</th>
                     <th name="th_subtotal" width="18%" class="text-right">Total</th>
                 </tr>
+              </font>
             </thead>
 
             <tbody class="invoice_tbody mt16 mb30" style="border-bottom: 1px solid #dee2e6">
@@ -105,6 +106,53 @@
             </tbody>
         </table>
       </table>
+      <td id="h4_address_data" position="replace"> 
+        <td id="h4_address_data"> 
+          <t t-if="o.note">
+            <span t-field="o.partner_id.street"/>
+          </t>
+          <t t-else="">
+            <span>
+                <t t-if="o.partner_id.country_id and o.partner_id.country_id != o.company_id.country_id">
+                    <t t-esc="o.partner_id.country_id.name"/>,
+                </t>
+                <t t-if="o.partner_id.state_id">
+                    <t t-esc="o.partner_id.state_id.name" />- 
+                    <t t-if="o.partner_id.x_country_county_id and o.partner_id.x_country_county_id.name != o.partner_id.state_id.name">
+                        <t t-esc="o.partner_id.x_country_county_id.name"/>,
+                    </t>
+                    <t t-esc="o.partner_id.x_country_district_id.name"/>
+                </t>
+                <t t-if="o.partner_id.country_id or o.partner_id.state_id">
+                    <br/>
+                </t>
+            </span>
+            <span t-field="o.partner_id.street"/>
+          </t>
+        </td>
+      </td>
+      <td id="r2_taxes" position="replace">
+        <td id="r2_taxes">
+            <t t-if="len(o.amount_by_group) > 0">
+                <table class="tble" style="margin-top: 1px;">
+                    <tr style="border-bottom: 1px solid #dee2e6;">
+                        <th width="25%" style="text-align: right;">Base Imponible</th>
+                        <th width="30%" style="padding-left: 10px;">Descripción</th>
+                        <th width="15%" style="text-align: right;">Impuesto</th>
+                    </tr>
+                    <t t-foreach="o.amount_by_group" t-as="amount_by_group">
+                        <tr style="">
+                            <td class="text-right"> <span class="text-nowrap" t-esc="amount_by_group[4]"/> </td>
+                            <td> <span style="margin-left:10px;" t-esc="amount_by_group[0]"/> </td>
+                            <td class="text-right"> <span class="o_price_total" t-esc="amount_by_group[3]"/> </td>
+                        </tr>
+                    </t>
+                </table>
+            </t> 
+        </td>
+      </td>
+
+
   </template>
 
 </odoo>
