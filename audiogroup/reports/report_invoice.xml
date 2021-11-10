@@ -6,24 +6,24 @@
         <div class="header" style="font-family:sans-serif;font-size:14px;">
           <div class="row mt32 mb32">
               <div class="col-6">
-                  <img t-if="company.logo" t-att-src="'data:image/png;base64,%s' % to_text(company.logo)" style="max-height: 100px;"/>
+                  <img t-if="o.company.logo" t-att-src="'data:image/png;base64,%s' % to_text(company.logo)" style="max-height: 100px;"/>
               </div>
               <div class="col-6 text-right" style="font:12px lucida-console,sans-serif !important;">
-                  <span t-field="company.partner_id"/>
+                  <span t-field="o.company.partner_id"/>
                   <br/>
-                  <span t-field="company.x_commercial_name"/>
+                  <span t-field="o.company.x_commercial_name"/>
                   <br/>
-                  Cédula Jurídica: <span t-field="company.partner_id.vat"/>
+                  Cédula Jurídica: <span t-field="o.company.partner_id.vat"/>
                   <br/>
-                  Teléfono: <span t-field="company.partner_id.phone"/>
+                  Teléfono: <span t-field="o.company.partner_id.phone"/>
                   <br/>
-                  <span t-field="company.partner_id.email"/>
+                  <span t-field="o.company.partner_id.email"/>
                   <br/>
-                  <span t-field="company.partner_id.country_id"/>,<span t-field="company.partner_id.state_id"/>
+                  <span t-field="o.company.partner_id.country_id"/>,<span t-field="o.company.partner_id.state_id"/>
                   <br/>
-                  <span t-field="company.partner_id.street"/>
+                  <span t-field="o.company.partner_id.street"/>
                   <br/>
-                  <span t-field="company.partner_id.street2"/>
+                  <span t-field="o.company.partner_id.street2"/>
               </div>
           </div>
         </div>
