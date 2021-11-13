@@ -102,16 +102,11 @@ class FaeAccountInvoiceLine(models.Model):
 
     def unlink(self):
         for line in self:
-            if line.move_id.state != 'draft':
-                raise ValidationError('El movimiento no está pendiente')
-            if line.move_id.x_accounting_lock:
-                raise ValidationError('La contabilidad está cerrada a la fecha del movimiento')
             if line.move_id.is_invoice():
                 # invoices (customer o vendors)
                 if line.move_id.posted_before and not line.exclude_from_invoice_tab:
                     raise ValidationError('No puede eliminar la línea contable porque está asociada con una línea de la factura')
-        res = super(FaeAccountInvoiceLine, self).unlink()
-        return res
+        return super(FaeAccountInvoiceLine, self).unlink()
 
 
 class FaeAccountInvoice(models.Model):
@@ -199,6 +194,12 @@ class FaeAccountInvoice(models.Model):
 
     _sql_constraints = [('x_electronic_code50_uniq', 'unique (company_id, x_electronic_code50)',
                         "La clave numérica deben ser única"), ]
+
+    def unlink(self):
+        for rec in self:
+            if rec.x_accounting_lock:
+                raise ValidationError('La contabilidad está cerrada a la fecha del movimiento: %s' % rec.name)
+        return super(FaeAccountInvoice, self).unlink()
 
 
     @api.depends('state', 'x_sequence')
@@ -378,7 +379,8 @@ class FaeAccountInvoice(models.Model):
 
     @api.model
     def compute_name_value(self):
-        if not self.x_document_type and self.name == '/':
+        if self.is_invoice(include_receipts=True) and self.name == '/' \
+              and (not self.x_document_type or (self.is_purchase_document() and not self.x_fae_incoming_doc_id)):
             seq_code = None
             values = {}
             if self.move_type == 'out_refund':
@@ -389,7 +391,7 @@ class FaeAccountInvoice(models.Model):
                 seq_code = 'xfae_number_internal_invoice'
                 values['name'] = 'xFAE - Number for Internal Invoice'
                 values['prefix'] = 'INV-'
-            elif self.move_tpe == 'in_refund':
+            elif self.move_type == 'in_refund':
                 seq_code = 'xfae_number_internal_bill_rev'
                 values['name'] = 'xFAE - Number for Internal Reversal Bill'
                 values['prefix'] = 'RBILL-'
@@ -408,7 +410,6 @@ class FaeAccountInvoice(models.Model):
                                     'number_increment': 1})
                     sequence = self.env['ir.sequence'].sudo().create(values)
                 self.name = sequence.next_by_id()
-                numero = self.name
 
 
     def action_post(self):
