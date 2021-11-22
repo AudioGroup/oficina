@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-
   <template id="fae_report_invoice_document_audiogroup" inherit_id="FAE_app.fae_report_invoice_document_inherited" priority="20">
       <xpath expr="//div[hasclass('header')]" position="replace">
-        <div class="header" style="font-family:sans-serif;font-size:14px;">
+        <div class="header">
           <div class="row mt32 mb32">
-              <div class="col-6">
+              <div class="col-1"/>
+              <div class="col-4">
                   <img t-if="o.company_id.logo" t-att-src="'data:image/png;base64,%s' % to_text(o.company_id.logo)" style="max-height: 100px;"/>
               </div>
-              <div class="col-6 text-right" style="font:12px lucida-console,sans-serif !important;">
+              <div class="col-7 text-left" style="font:16px lucida-console,sans-serif !important;font-weight:bold !important">
                   <span t-field="o.company_id.partner_id"/>
                   <br/>
                   <span t-field="o.company_id.x_commercial_name"/>
@@ -29,40 +29,43 @@
         </div>
       </xpath>
       <div id="informations" position="before">
-        <div class="text-center" style=" background-color:  #3498DB;"><font color="#fff">
-            <h2>
-              <t t-if="o.x_electronic_code50 and o.x_document_type in ('FE','FEC','FEE','ND','NC')">
-                  <span t-if="o.x_document_type=='FE'" >FACTURA ELECTRONICA: </span>
-                  <span t-if="o.x_document_type=='FEC'">FACTURA DE COMPRA : </span>
-                  <span t-if="o.x_document_type=='TE'" >TIQUETE ELECTRONICO: </span>
-                  <span t-if="o.x_document_type=='NC'" >NOTA CREDITO ELECTRONICA:  </span>
-                  <span t-if="o.x_document_type=='ND'" >NOTA DEBITO ELECTRONICA:</span>
-                  <t t-if="o.x_document_type=='FEE'">
-                      <span style="font-weight:bolder">FACTURA ELECTRONICA</span><br/>
-                      <span style="font-weight:bolder">DE EXPORTACION: </span>
-                  </t>
-              </t>
-              <t t-else="">
-                  <span >FACTURA: </span>
-              </t>
-              <t t-if="(o.move_type in ('out_invoice','out_refund') or o.x_document_type=='FEC') and o.x_sequence">
-                  <span t-esc="o.x_sequence and o.x_sequence or o.number"/>
-              </t>
-              <t t-else="">
-                  <span t-field="o.name"/>
-              </t>
-            </h2>
-            <t t-if="o.x_electronic_code50">
-              <h4>
-                <span>Clave: </span>
-                <span t-esc="o.x_electronic_code50" />
-              </h4>
-            </t></font>
-        </div>
+          <div class="row mt32 mb32">
+              <div class="col-5"/>
+              <div class="col-7">
+                <div class="text-center" style="border:1px solid black;">
+                      <t t-if="o.x_electronic_code50 and o.x_document_type in ('FE','FEC','FEE','ND','NC')">
+                          <span t-if="o.x_document_type=='FE'">FACTURA ELECTRONICA: </span>
+                          <span t-if="o.x_document_type=='FEC'">FACTURA DE COMPRA : </span>
+                          <span t-if="o.x_document_type=='TE'">TIQUETE ELECTRONICO: </span>
+                          <span t-if="o.x_document_type=='NC'">NOTA CREDITO ELECTRONICA:  </span>
+                          <span t-if="o.x_document_type=='ND'">NOTA DEBITO ELECTRONICA:</span>
+                          <t t-if="o.x_document_type=='FEE'">
+                              <span style="font-weight:bolder">FACTURA ELECTRONICA</span><br/>
+                              <span style="font-weight:bolder">DE EXPORTACION: </span>
+                          </t>
+                      </t>
+                      <t t-else="">
+                          <span>FACTURA: </span>
+                      </t>
+                      <t t-if="(o.move_type in ('out_invoice','out_refund') or o.x_document_type=='FEC') and o.x_sequence">
+                          <span t-esc="o.x_sequence and o.x_sequence or o.number"/>
+                      </t>
+                      <t t-else="">
+                          <span t-field="o.name"/>
+                      </t>
+                      <br/>
+                    <t t-if="o.x_electronic_code50">
+                        <span>Clave: </span>
+                        <span t-esc="o.x_electronic_code50"/>
+                    </t>
+                </div>
+              </div>
+            </div>
+            <br/>
       </div>
       <table id="t2_invoice_line_table" position="replace">
         <table id="t2_invoice_line_table" name="invoice_line_table" cellspacing="0" class="tble">
-            <thead class="tble-header" style=" background-color:  #3498DB;"><font color="#fff">
+            <thead class="tble-header" style=" background-color:  black;color:white;">
                 <tr>
                     <th name="th_description" class="text-left">Producto</th>
                     <th name="th_quantity" width="10%" class="text-right">Cantidad</th>
@@ -71,7 +74,7 @@
                     <th name="th_taxes" width="15%" class="text-right">Impuesto</th>
                     <th name="th_subtotal" width="18%" class="text-right">Total</th>
                 </tr>
-              </font>
+              
             </thead>
 
             <tbody class="invoice_tbody mt16 mb30" style="border-bottom: 1px solid #dee2e6">
@@ -108,8 +111,8 @@
       </table>
       <td id="h4_address_data" position="replace"> 
         <td id="h4_address_data"> 
-          <t t-if="o.note">
-            <span t-field="o.partner_id.street"/>
+          <t t-if="o.narration">
+            <span t-field="o.narration"/>
           </t>
           <t t-else="">
             <span>
@@ -117,7 +120,7 @@
                     <t t-esc="o.partner_id.country_id.name"/>,
                 </t>
                 <t t-if="o.partner_id.state_id">
-                    <t t-esc="o.partner_id.state_id.name" />- 
+                    <t t-esc="o.partner_id.state_id.name"/>- 
                     <t t-if="o.partner_id.x_country_county_id and o.partner_id.x_country_county_id.name != o.partner_id.state_id.name">
                         <t t-esc="o.partner_id.x_country_county_id.name"/>,
                     </t>
@@ -131,9 +134,12 @@
           </t>
         </td>
       </td>
+      <!-- Datos de cuentas bancarias si las ingresaron  -->
+      <div id="n1_banking_info" position="replace">
+      </div>
       <td id="r2_taxes" position="replace">
         <td id="r2_taxes">
-            <t t-if="len(o.amount_by_group) > 0">
+            <t t-if="len(o.amount_by_group) &gt; 0">
                 <table class="tble" style="margin-top: 1px;">
                     <tr style="border-bottom: 1px solid #dee2e6;">
                         <th width="25%" style="text-align: right;">Base Imponible</th>
@@ -149,10 +155,31 @@
                     </t>
                 </table>
             </t> 
+            <div id="n1_banking_info" style="width:100%;margin-top:0;font-size:14px;padding:2px;text-align:justify">
+                <t t-if="o.move_type == 'out_invoice' and o.company_id.x_info_bank_accounts">
+                    <t t-raw="o.company_id.x_info_bank_accounts"/>
+                </t>
+            </div>
         </td>
       </td>
-
-
+      <td id="h5_currency_label" position="replace">
+        <td id="h5_currency_label"> 
+          <span>Moneda:</span>
+          <t t-if="o.currency_id.name=='USD'">
+            <br/>  Tipo Cambio: <br/>
+            Monto CRC:
+          </t>
+        </td>
+      </td>
+      <td id="h5_currency_data" position="replace">
+        <td id="h5_currency_data"> 
+          <span t-field="o.currency_id.name"/>
+          <t t-if="o.currency_id.name=='USD'">
+            <br/><span t-field="o.x_currency_rate"/> <br/>
+            <span t-field="o.amount_total_signed"/>
+          </t>
+        </td>
+      </td>
   </template>
 
 </odoo>
