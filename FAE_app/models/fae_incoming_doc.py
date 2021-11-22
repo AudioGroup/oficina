@@ -19,6 +19,20 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
+# almacena datos de correos que no fallaron al momento de procesarlo
+class XFaeIncomingEmail(models.Model):
+    _name = "xfae.incoming.email"
+    _description = "Correos que no pudieron procesarse"
+    _order = "id desc"
+
+
+    email_account_id = fields.Many2one("xfae.mail", string="Correo Recibe")
+    sender = fields.Char(string='Emisor')
+    subject = fields.Char(string='Asunto')
+    date = fields.Datetime(string='Fecha')
+
+
+
 # Almacena los XML que fueron rechazados por hacienda y enviados otros vez luego de corregirse la razon de rechazo
 class XFaeIncomingDocRejected(models.Model):
     _name = "xfae.incoming.documents.rejected"
@@ -99,7 +113,7 @@ class XFaeIncomingDoc(models.Model):
     message_send_date = fields.Date(string="Fecha Envío", required=False)
     quantity_messages = fields.Integer(string='Cantidad Mensaje XML')
     origin = fields.Char(string='Origen', default='mail')
-    email_account_id = fields.Many2one("xfae.mail", string="Cuenta Correo Recibo", )
+    email_account_id = fields.Many2one("xfae.mail", string="Cuenta Correo Recibe", )
 
     # necesito el tener issuer_xml_doc para A, P, o R
     code_accept = fields.Selection(string='Código Aceptación', 
@@ -181,11 +195,9 @@ class XFaeIncomingDoc(models.Model):
 
     @api.onchange('code_accept')
     def _onchange_code_accept(self):
-        if self.code_accept == 'AA':
-            raise ValidationError('Este código es para uso reservado del sistema')
-        elif self.code_accept in ('A','P','R'):
+        if self.code_accept in ('A','P','R','AA'):
             if not self.company_id:
-                raise Warning('La cedula del receptor no corresponde a alguna de las compañías instaladas')
+                raise Warning('La cédula del receptor no corresponde a alguna de las compañías instaladas')
             elif not self.issuer_xml_doc:
                 raise Warning('No puede Aceptar o Rechazar el documento debido a que no tiene el documento electrónico adjunto (XML)')
 
@@ -212,70 +224,82 @@ class XFaeIncomingDoc(models.Model):
 
     # descarga los documentos recibidos en el correo
     def read_email(self):
-        _logger.info('>> fae_incoming_doc.read_email: Inicio ')
-
         fae_email = self.env['xfae.mail'].search([('type', '=', 'in')])
         identification_types = self.env['xidentification.type'].search([])
         companies = self.env['res.company'].search([])
         currencies = self.env['res.currency'].search([('name', 'in', ['CRC', 'USD'])])
 
-        email_from = ''
+        failed = 0
+
         # >> método interno
-        def procesa_correo(num, message):
+        def procesa_correo(email_account_id, num, message):
             """ like Mail_thread.message_process
             Process an incoming RFC2822 email message
             """
-            nonlocal email_from
-            email_from = ''
+            nonlocal failed
+            msg_dict = {}
+            try:
+                # extract message bytes - we are forced to pass the message as binary because
+                # we don't know its encoding until we parse its headers and hence can't
+                # convert it to utf-8 for transport between the mailgate script and here.
+                MailThread = self.env['mail.thread']
+                if isinstance(message, xmlrpclib.Binary):
+                    message = bytes(message.data)
+                if isinstance(message, str):
+                    message = message.encode('utf-8')
+                message = email.message_from_bytes(message, policy=email.policy.SMTP)
 
-            # extract message bytes - we are forced to pass the message as binary because
-            # we don't know its encoding until we parse its headers and hence can't
-            # convert it to utf-8 for transport between the mailgate script and here.
-            MailThread = self.env['mail.thread']
-            if isinstance(message, xmlrpclib.Binary):
-                message = bytes(message.data)
-            if isinstance(message, str):
-                message = message.encode('utf-8')
-            message = email.message_from_bytes(message, policy=email.policy.SMTP)
+                msg_dict = MailThread.message_parse(message, save_original=False)
+                _logger.info('>>   fae_incoming_doc.read_email: num: %s  From: %s  - Subject: %s', num,  msg_dict.get('email_from'), msg_dict.get('subject'))
+                attachments = msg_dict.pop('attachments', None)
+                if attachments:
+                    complete_vals = {}
+                    flag2save = True
+                    attach_pdf = None
+                    clave_hacienda = None
+                    for a in attachments:
+                        if a.fname:
+                            file_name = a.fname.lower()
+                            attach_xml = None
+                            if file_name.find('.xml') > 0:
+                                attach_xml = a.content
+                                inicio_xml = '<?xml' if isinstance(attach_xml, str) else b'<?xml'
+                                i = attach_xml.find(inicio_xml)
+                                if i > 0:
+                                    # se detectaron problemas con xml que traian caracteres extraños al inicio
+                                    attach_xml = attach_xml[i:]
+                            elif file_name.find('.pdf') > 0:
+                                attach_pdf = a.content
 
-            msg_dict = MailThread.message_parse(message, save_original=False)
-            email_from = msg_dict.get('email_from')
-            _logger.info('>>   fae_incoming_doc.read_email: num: %s  From: %s  - Subject: %s', num, email_from, msg_dict.get('subject'))
-            attachments = msg_dict.pop('attachments', None)
-            if attachments:
-                complete_vals = {}
-                flag2save = True
-                attach_pdf = None
-                clave_hacienda = None
-                for a in attachments:
-                    if a.fname:
-                        file_name = a.fname.lower()
-                        attach_xml = None
-                        if file_name.find('.xml') > 0:
-                            attach_xml = a.content
-                            i = attach_xml.find('<?xml')
-                            if i > 0:
-                                # se experimento problemas con xml que traen caracteres extraños al inicio
-                                attach_xml = attach_xml[i:]
-                        elif file_name.find('.pdf') > 0:
-                            attach_pdf = a.content
+                            # _logger.info('>> fae_incoming_doc.read_email/pop:    attach_xml: %s', str(attach_xml))
+                            if attach_xml:
+                                values = fae_utiles.parser_xml(identification_types, companies, currencies, 'email', attach_xml)
+                                clave_xml = values.get('issuer_electronic_code50')
+                                # _logger.info('>> fae_incoming_doc.read_email/pop:    despues parser xml declave_xml: %s', clave_xml)
+                                if clave_hacienda and clave_xml:
+                                    if clave_hacienda != clave_xml:
+                                        flag2save = False
+                                elif clave_xml:
+                                    clave_hacienda = clave_xml
+                                complete_vals.update(values)
 
-                        # _logger.info('>> fae_incoming_doc.read_email/pop:    attach_xml: %s', str(attach_xml))
-                        if attach_xml:
-                            values = fae_utiles.parser_xml(identification_types, companies, currencies, 'email', attach_xml)
-                            clave_xml = values.get('issuer_electronic_code50')
-                            # _logger.info('>> fae_incoming_doc.read_email/pop:    despues parser xml declave_xml: %s', clave_xml)
-                            if clave_hacienda and clave_xml:
-                                if clave_hacienda != clave_xml:
-                                    flag2save = False
-                            elif clave_xml:
-                                clave_hacienda = clave_xml
-                            complete_vals.update(values)
+                    if clave_hacienda and flag2save:
+                        complete_vals.update({'email_account_id': server.id})
+                        # _logger.info('>> fae_incoming_doc.read_email/pop:    antes de save_incoming document')
+                        res = self.save_incoming_document(clave_hacienda, complete_vals, attach_pdf)
 
-                if clave_hacienda and flag2save:
-                    complete_vals.update({'email_account_id': server.id})
-                    # _logger.info('>> fae_incoming_doc.read_email/pop:    antes de save_incoming document')
-                    res = self.save_incoming_document(clave_hacienda, complete_vals, attach_pdf)
+            except Exception as e:
+                if msg_dict:
+                    incoming_email = self.env['xfae.incoming.email']
+                    values = {'email_account_id': email_account_id,
+                              'sender': msg_dict.get('email_from'),
+                              'subject': msg_dict.get('subject'),
+                              'date': msg_dict.get('date')
+                             }
+                    incoming_email.sudo().create(values)
+                _logger.error('>> fae_incoming_doc.read_email: Exception al procesar correo num: %s  from: %s   Err: %s',
+                              str(num), msg_dict.get('email_from'), tools.ustr(e))
+                failed += 1
         #<< Fin de métodos internos
 
         for server in fae_email:
@@ -292,12 +316,12 @@ class XFaeIncomingDoc(models.Model):
                         unseen_count = data[0].split()
                         _logger.info('>> fae_incoming_doc.read_email/imap:  Cantidad de correos: %s', str(unseen_count) )
                         for num in unseen_count:
-                            result, data = email_server.fetch(num, '(RFC822)')
-                            email_server.store(num, '-FLAGS', '\\Seen')
                             try:
-                                procesa_correo(num, data[0][1])
-                            except Exception:
-                                _logger.error('>> fae_incoming_doc.read_email/imap: Exception al procesar correo num: %s  from: %s   Err: %s', str(num), email_from, tools.ustr(e))
+                                result, data = email_server.fetch(num, '(RFC822)')
+                                email_server.store(num, '-FLAGS', '\\Seen')
+                                procesa_correo(server.id, num, data[0][1])
+                            except Exception as e:
+                                _logger.error('>> fae_incoming_doc.read_email/pop: Exception traer correo num: %s   Err: %s', str(num), tools.ustr(e)[:320])
                                 failed += 1
                             email_server.store(num, '+FLAGS', '\\Seen')
                             self._cr.commit()
@@ -317,13 +341,12 @@ class XFaeIncomingDoc(models.Model):
 
                         _logger.info('>> fae_incoming_doc.read_email/pop:  Cantidad de correos: %s', str(messageCount))
                         for num in range(messageCount, 0, -1):
-                            messages = ''
                             try:
                                 (header, messages, octets) = email_server.retr(num)
                                 message = (b'\n').join(messages)
-                                procesa_correo(num, message)
+                                procesa_correo(server.id, num, message)
                             except Exception as e:
-                                _logger.error('>> fae_incoming_doc.read_email/pop: Exception al procesar correo num: %s   from: %s   Err: %s', str(num), email_from, tools.ustr(e)[:320])
+                                _logger.error('>> fae_incoming_doc.read_email/pop: Exception traer correo num: %s   Err: %s', str(num), tools.ustr(e)[:320])
                                 failed += 1
                             self._cr.commit()
                     except Exception:

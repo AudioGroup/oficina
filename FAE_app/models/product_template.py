@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 
 from odoo import models, fields, api, _
-from lxml import etree
-import logging
+# from lxml import etree
 
 from odoo.exceptions import Warning, UserError, ValidationError
+
+import logging
 
 _logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ class faeProduct(models.Model):
                                            help='Código de Hacienda para identificar otros tipos cargos')
     x_tariff_heading = fields.Char(string='Partida Arancelaria', copy=True, 
                                     help='La partida arancelaria para exportaciones')
+
 
     @api.onchange('company_id', 'x_cabys_code_id')
     def _onchange_x_cabys_code_id(self):

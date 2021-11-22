@@ -10,13 +10,14 @@ import datetime
 import time
 
 import phonenumbers
-import xmlsig
+# import xmlsig
 
 from xml.sax.saxutils import escape
 from ..xades.context2 import XAdESContext2, PolicyId2, create_xades_epes_signature
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from xml.dom import minidom
+from odoo.tools import float_compare, float_round
 
 from . import fae_enums
 
@@ -77,12 +78,31 @@ class XmlStrBuilder:
 
 
 def get_datetime_dgt(fecha_hora=None):
+    # La hora de Costa Rica está a 6 horas antes del Meridiano 0 (es UTC -6)
     dt_cr = (fecha_hora if fecha_hora else datetime.datetime.today()).astimezone(pytz.timezone('America/Costa_Rica'))
-    fh_actual = dt_cr.strftime("%Y-%m-%dT%H:%M:%S-06:00") 
-    return fh_actual
+    fh_str = dt_cr.strftime("%Y-%m-%dT%H:%M:%S-06:00")
+    return fh_str
+
+
+def get_datetime(fecha_hora=None):
+    dt_cr = (fecha_hora if fecha_hora else datetime.datetime.today()).astimezone(pytz.timezone('America/Costa_Rica'))
+    fh_str = dt_cr.strftime("%Y-%m-%dT%H:%M:%S")
+    return fh_str
+
 
 def issue_date2str_dgt(fh_txt):
     return fh_txt + '-06:00'
+
+
+def str_to_dbdate(date_str):
+    fecha = None
+    if date_str:
+        if len(date_str) == 10:
+            date_str += "T00:00:00"
+        if len(date_str) > 19:
+            date_str = date_str[:19]
+        fecha = datetime.datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S") + datetime.timedelta(hours=6)
+    return fecha
 
 
 def get_cryptography_expiration(company, x_fae_mode):
@@ -170,7 +190,8 @@ def get_economic_activities(company):
                         'text': 'get_economic_activities failed: %s' % response.reason}
     return response_json
 
-def get_exoneration_info(contact, exoneration_number):
+
+def get_exoneration_info(env, exoneration_number):
     response_json = None
     if exoneration_number:
         url_endpoint = fae_enums.dgt_url['api-ex'] + exoneration_number
@@ -187,24 +208,34 @@ def get_exoneration_info(contact, exoneration_number):
             exo_authorization_id = None
             if tipo_documento:
                 cod_tipo_documento = tipo_documento.get('codigo')
-                exo_authorization = contact.env['xexo.authorization'].search([('code', '=', cod_tipo_documento)], limit=1)
+                exo_authorization = env['xexo.authorization'].search([('code', '=', cod_tipo_documento)], limit=1)
                 exo_authorization_id = exo_authorization.id if exo_authorization else None
-            cabys_list = re.sub("[\[\]']", "", response.json().get('cabys'))  # quita los corchetes [ ] y la comilla simple
+
+            porcentaje_exoneracion = float(response.json().get('porcentajeExoneracion') or 0)
+            tax_id = None
+            if porcentaje_exoneracion > 0:
+                tax = env['account.tax'].search([('type_tax_use', '=', 'sale'), ('active', '=', True),
+                                                 ('x_has_exoneration', '=', True),
+                                                 ('x_exoneration_rate', '=', float_round(porcentaje_exoneracion, precision_digits=2))], limit=1)
+                tax_id = tax.id if tax else None
+            femision = str_to_dbdate(response.json().get('fechaEmision'))
+            fvence = str_to_dbdate(response.json().get('fechaVencimiento'))
+            cabys_list = str(response.json().get('cabys')).lstrip('[').rstrip(']').replace("'","")   # quita los corchetes [ ] y la comilla simple
             response_json = {'status': 200,
                              'identificacion': response.json().get('identificacion'),
                              'numeroDocumento': response.json().get('numeroDocumento'),
                              'codTipoDocumento': cod_tipo_documento,
                              'exoAuthorization_id': exo_authorization_id,
                              'porcentajeExoneracion': response.json().get('porcentajeExoneracion'),
+                             'tax_id': tax_id,
                              'nombreInstitucion': response.json().get('nombreInstitucion'),
-                             'fechaEmision': response.json().get('fechaEmision'),
-                             'fechaVencimiento': response.json().get('fechaVencimiento'),
+                             'fechaEmision': femision,
+                             'fechaVencimiento': fvence,
                              'poseeCabys': response.json().get('poseeCabys'),
                              'cabys': cabys_list
                              }
         else:
-            response_json = {'status': response.status_code, 
-                            'text': 'get_exoneration_info failed: %s' % response.reason}
+            response_json = {'status': response.status_code, 'text': 'get_exoneration_info failed: %s' % response.reason}
     return response_json
 
 
@@ -643,7 +674,10 @@ def gen_xml_v43(inv, sale_condition_code, total_servicio_gravado, total_servicio
                             xmlstr.Tag('TipoDocumento', receiver_company.x_exo_type_exoneration.code )
                             xmlstr.Tag('NumeroDocumento', receiver_company.x_exo_exoneration_number )
                             xmlstr.Tag('NombreInstitucion', receiver_company.x_exo_institution_name )
-                            xmlstr.Tag('FechaEmision', receiver_company.x_exo_date_issue and receiver_company.x_exo_date_issue.strftime('%Y-%m-%dT%H:%M:%S-06:00') or None )
+                            fechaEmision = None
+                            if receiver_company.x_exo_date_issue:
+                                fechaEmision = get_datetime(receiver_company.x_exo_date_issue)
+                            xmlstr.Tag('FechaEmision', fechaEmision)
                             xmlstr.Tag('PorcentajeExoneracion', str(int(b['exoneracion']['porc_exonera'])) )
                             xmlstr.Tag('MontoExoneracion', str(b['exoneracion']['monto_exonera']) )
                             xmlstr.Append('</Exoneracion>')
@@ -724,7 +758,8 @@ def gen_xml_v43(inv, sale_condition_code, total_servicio_gravado, total_servicio
         xmlstr.Append('</InformacionReferencia>')
 
     #  Genera datos del tag Otros
-    if inv.x_document_type in ('FE','TE') and receiver_company.vat == '3101420995':     # Compañía Galletas Pozuelo
+    if inv.x_document_type in ('FE','TE') and receiver_company.vat in ('3101420995', '3101011086', '3101375519', '3101695692'):
+        # Compañía Galletas Pozuela, Americana de Helados, Nacional de Chocolates y Nutresa
         ref_oc = ref_oc if ref_oc else ''
         xmlotros.Tag_prop('OtroTexto', 'codigo', 'NumeroPedido', str(escape(ref_oc)) )
 
@@ -795,7 +830,7 @@ def parser_xml(identification_type_obj, company_obj, currency_obj, origin, docxm
     xml_doc = docxml
     if origin == 'manual':
         docxml = base64.decodebytes(docxml)
-        # xml_doc = base64.encodebytes(docxml)
+
     elif isinstance(docxml, str):
         xml_doc = base64.encodebytes(docxml.encode('utf-8'))
 
