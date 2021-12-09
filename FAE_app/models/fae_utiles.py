@@ -220,7 +220,13 @@ def get_exoneration_info(env, exoneration_number):
                 tax_id = tax.id if tax else None
             femision = str_to_dbdate(response.json().get('fechaEmision'))
             fvence = str_to_dbdate(response.json().get('fechaVencimiento'))
-            cabys_list = str(response.json().get('cabys')).lstrip('[').rstrip(']').replace("'","")   # quita los corchetes [ ] y la comilla simple
+            cabys_list = str(response.json().get('cabys')).lstrip('[').rstrip(']').replace("'", "").replace(" ", "")   # quita los corchetes [ ] y la comilla simple y espacios
+            cabys_array = cabys_list.split(',')
+            cabys_array.sort()
+            cabys_list = None
+            for codigo in cabys_array:
+                codigo = codigo.strip("'")
+                cabys_list = codigo if not cabys_list else cabys_list + ', ' + codigo
             response_json = {'status': 200,
                              'identificacion': response.json().get('identificacion'),
                              'numeroDocumento': response.json().get('numeroDocumento'),
@@ -435,15 +441,15 @@ def consulta_doc_enviado(inv, token, fae_mode):
             inv.x_state_dgt = '2'
             inv.x_state_email = 'NOE'
 
-    elif inv.x_error_count > 10:
+    elif ind_estado == 'error' or inv.x_error_count > 10:
         inv.x_state_dgt = 'ERR'
         inv.x_state_email = 'NOE'
-        inv.x_mensaje_respuesta = get_mensaje_respuesta(inv.x_xml_respuesta)
+        inv.x_mensaje_respuesta = str(response_json)
 
     elif ind_estado != 'error' and ind_estado.find('procesando') < 0:
         inv.x_error_count += 1
         inv.x_state_dgt = 'PRO'
-        inv.x_mensaje_respuesta = get_mensaje_respuesta(inv.x_xml_respuesta)
+        inv.x_mensaje_respuesta = str(response_json)
     
     # _logger.info('>> fae_utiles.consulta_doc_enviado: numero: %s,  ind_estado: %s', inv.x_sequence, ind_estado )
     return inv.x_state_dgt
@@ -469,7 +475,7 @@ def gen_xml_v43(inv, sale_condition_code, total_servicio_gravado, total_servicio
 
     numero_linea = 0
     payment_methods_code = []
-    if inv._name == 'pos.order': 
+    if inv._name == 'pos.order':
         # Documento de POS
         economic_activity_code = inv.company_id.x_economic_activity_id.code
         plazo_credito = '0'
@@ -957,12 +963,15 @@ def send_xml_fe(inv, date_issue, xml, fae_mode):
             'comprobanteXml': xml_base64
             }
 
-    if inv.partner_id and inv.partner_id.vat and inv.partner_id.x_identification_type_id.code != 'E':
+    if (inv.partner_id and inv.partner_id.vat and inv.partner_id.x_identification_type_id and inv.partner_id.x_identification_type_id.code != 'E'):
         data['receptor'] = {'tipoIdentificacion': inv.partner_id.x_identification_type_id.code,
                             'numeroIdentificacion': inv.partner_id.vat
                             }
 
     json_hacienda = json.dumps(data)
+
+    # if inv.x_state_dgt in ('ERR', 'ENV'):
+    #     _logger.info('>> send_xml_fe:  Json a enviar: %s', json_hacienda)
 
     headers = {'Authorization': 'Bearer ' + token, 'Content-type': 'application/json'}
 

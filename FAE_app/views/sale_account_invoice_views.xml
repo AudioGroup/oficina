@@ -25,12 +25,13 @@
             </tree>
             <field name="invoice_date_due" position="after">
                 <field name="x_document_type" />
-                <field name="x_sequence" invisible="context.get('default_move_type') in ('in_invoice', 'in_refund','in_receipt')" />
+                <!-- <field name="x_sequence" invisible="context.get('default_move_type') in ('in_invoice', 'in_refund','in_receipt')" /> -->
+                <field name="x_sequence" />
                 <field name="x_state_dgt" />
             </field>
             <field name="amount_untaxed_signed" position="before">
                 <field name="amount_total" string="Total Invoice" widget="monetary" optional="show"
-                        invisible="context.get('default_move_type') in ('in_invoice','in_refund','in_receipt')" />
+                        invisible="context.get('default_move_type') not in ('in_invoice','in_refund','in_receipt', 'out_invoice','out_refund','out_receipt')"/>
             </field>
         </field>
     </record>
@@ -71,7 +72,7 @@
                 <label for="ref" string="Reference Journal"
                         attrs="{'invisible':[('move_type','!=','entry')]}" />
                 <field name="ref" nolabel="1"
-                        attrs="{'invisible':[('move_type','!=','entry')],'readonly':[('x_move_editable','=',False)]}" />
+                        attrs="{'invisible':[('move_type','!=','entry')], 'readonly':[('x_accounting_lock','=',True)]}" />
             </xpath>
 
             <field name="partner_id" position="attributes">
@@ -95,11 +96,13 @@
                 <label for="ref" string="Bill Reference"
                         attrs="{'invisible':['|',('x_fae_incoming_doc_id','=',True), ('move_type', 'not in', ('in_invoice', 'in_receipt', 'in_refund'))]}" />
                 <field name="ref" nolabel="1"
-                        attrs="{'invisible':['|',('x_fae_incoming_doc_id','=',True), ('move_type', 'not in', ('in_invoice', 'in_receipt', 'in_refund'))], 'readonly':[('state','!=','draft')]}" />
+                        attrs="{'invisible':['|',('x_fae_incoming_doc_id','=',True), ('move_type', 'not in', ('in_invoice', 'in_receipt', 'in_refund'))],
+                                'readonly':[('x_accounting_lock','=',True)] }" />
                 <label for="ref" string="Reference"
                         attrs="{'invisible':[('move_type', 'not in', ('out_invoice', 'out_refund'))]}" />
                 <field name="ref" nolabel="1"
-                        attrs="{'invisible':[('move_type', 'not in', ('out_invoice', 'out_refund'))], 'readonly':[('x_move_editable','=',False)]}" />
+                        attrs="{'invisible':[('move_type', 'not in', ('out_invoice', 'out_refund'))],
+                                'readonly':[('x_accounting_lock','=',True)] }" />
             </xpath>
 
             <field name="invoice_date" position="attributes">
@@ -110,7 +113,7 @@
                 <field name="x_issue_date" attrs="{'invisible':[('move_type','not in',('out_invoice','out_refund')), ('x_document_type','!=','FEC')], 'readonly':True}"/>
                 <field name="x_state_dgt"  attrs="{'invisible':[('move_type','not in',('out_invoice','out_refund')), ('x_document_type','!=','FEC')], 'readonly':True}"/>
                 <field name="x_payment_method_id" 
-                        attrs="{'invisible':[('move_type','not in',('out_invoice','out_refund'))], 'required':[('move_type','=','out_invoice')], 'readonly':[('x_move_editable','=',False)]}"/>
+                        attrs="{'invisible':[('move_type','not in',('out_invoice','out_refund'))], 'required':[('x_document_type','!=',False),('move_type','=','out_invoice')], 'readonly':[('x_move_editable','=',False)]}"/>
                 <field name="x_reference_code_id" options="{'no_open': True}" 
                         attrs="{'invisible':[('move_type', 'not in', ('out_invoice', 'out_refund', 'in_invoice', 'in_refund'))], 'readonly':[('x_move_editable','=',False)]}"/>
                 <field name="x_error_count" invisible="1"/>

@@ -13,7 +13,6 @@ _logger = logging.getLogger(__name__)
 class SaleOrderInherit(models.Model):
     _inherit = "sale.order"
 
-
     x_economic_activity_id = fields.Many2one("xeconomic.activity", string="Actividad Económica", required=False,
                                              context={'active_test': True}, )
 
