@@ -378,6 +378,24 @@ class FaeAccountInvoice(models.Model):
                     self.x_reference_document_type_id = rec.id
 
     @api.model
+    def compute_name_value_temp(self):
+        if self.is_invoice(include_receipts=True) and self.name[:5] != 'TEMP-' and (not self.x_sequence or self.name == '/'):
+            seq_code = 'xfae_temporal_number'
+            values = {}
+            values['name'] = 'xFAE - Temporal Number for FAE'
+            values['prefix'] = 'TEMP-'
+            sequence = self.env['ir.sequence'].search([('code', '=', seq_code), ('company_id', '=', self.company_id.id)])
+            if not sequence:
+                values.update({'company_id': self.company_id.id,
+                               'code': seq_code,
+                               'active': True,
+                               'padding': 6,
+                               'number_next': 1,
+                               'number_increment': 1})
+                sequence = self.env['ir.sequence'].sudo().create(values)
+            self.name = sequence.next_by_id()
+
+    @api.model
     def compute_name_value(self):
         if self.is_invoice(include_receipts=True) and self.name == '/' \
               and (not self.x_document_type or (self.is_purchase_document() and not self.x_fae_incoming_doc_id)):
@@ -531,14 +549,12 @@ class FaeAccountInvoice(models.Model):
                         inv.x_fae_incoming_doc_id.invoice_id = inv.id
                         inv.x_fae_incoming_doc_id.purchase_registried = True
 
-
     # cron Job: Envia a hacienda todos los documentos de clientes no enviados a hacienda
     def _send_invoices_dgt(self, max_invoices=20):  # cron
         # from may-2021 este job se saco de funcionamiento porque por integraciones con otras
         # funcionalidades generaba documentos electrónicos no deseados.
         # se inicia un proceso de desactivacion del cron en clientes que lo tienen funcionando
         pass
-
 
     # cron Job: Chequea en hacienda el status de documentos de clientnes enviados
     def _check_status_doc_enviados(self, max_invoices=10):
@@ -890,7 +906,28 @@ class FaeAccountInvoice(models.Model):
 
                     if gen_consecutivo:
                         if not sequence:
+                            inv.compute_name_value_temp()
                             raise UserError('No han definido el consecutivo para el tipo de documento: %s' % (inv.x_document_type))
+                        # en un cliente hubo saltos, y hubo que tratar de identificar la causa
+                        if sequence.number_next_actual >= 5:
+                            consecutivo = sequence.get_next_char(sequence.number_next_actual - 1)
+                            prev_x_sequence = fae_utiles.gen_consecutivo(inv.x_document_type, consecutivo, inv.company_id.x_sucursal, inv.company_id.x_terminal)
+                            consecutivo = sequence.get_next_char(sequence.number_next_actual - 4)
+                            from_x_sequence = fae_utiles.gen_consecutivo(inv.x_document_type, consecutivo, inv.company_id.x_sucursal, inv.company_id.x_terminal)
+                            self._cr.execute("""
+                                SELECT id, x_sequence
+                                FROM account_move
+                                WHERE x_sequence >= %s
+                                  AND left(x_sequence,10) = %s
+                                  AND x_document_type = %s
+                                  AND company_id = %s
+                                ORDER BY x_sequence DESC
+                                """, [from_x_sequence, from_x_sequence[:10], inv.x_document_type, inv.company_id.id])
+                            res = self._cr.dictfetchone()
+                            if res and prev_x_sequence != res.get('x_sequence'):
+                                inv.compute_name_value_temp()
+                                raise UserError('Para el tipo de documento: %s se detectó un salto. No existe el número anterior: %s' % (inv.x_document_type, prev_x_sequence))
+
                         # Genera el consecutivo y clave de 50
                         consecutivo = sequence.next_by_id()
                         jdata = fae_utiles.gen_clave_hacienda(inv, inv.x_document_type, consecutivo, inv.company_id.x_sucursal, inv.company_id.x_terminal)
