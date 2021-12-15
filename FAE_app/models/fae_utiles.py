@@ -280,8 +280,13 @@ def gen_clave_hacienda(doc, tipo_documento, consecutivo, sucursal_id, terminal_i
     
     clave_hacienda = codigo_pais + fec_doc + cedula_emisor[:12] + consecutivo20 + situacion_comprobante 
 
-    # calcula el número de seguridad    
-    num_seguridad = (abs(hash(clave_hacienda[16:] + clave_hacienda[0:16])) % 99999998) + 1
+    # calcula el número de seguridad
+    clave_hash = clave_hacienda[16:] + clave_hacienda[0:16]
+    num_seguridad = 0
+    for i in range(len(clave_hash)):
+        if 48 <= ord(clave_hash[i]) <= 57:      # 0..9
+            num_seguridad += (i+1)**int(clave_hash[i])
+    num_seguridad = (num_seguridad % 99999998) + 1
     clave_hacienda = clave_hacienda + str(num_seguridad).zfill(8) 
 
     return {'consecutivo': consecutivo20, 'clave_hacienda': clave_hacienda }
