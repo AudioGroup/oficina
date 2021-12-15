@@ -5,6 +5,9 @@ from odoo import fields, models, _
 from ..models import fae_utiles
 from odoo.exceptions import Warning,UserError, ValidationError
 
+# from xml.dom import minidom
+# import base64
+# import chardet
 
 class XFaeReadLocalDoc(models.TransientModel):
     _name = 'xfae.read_local_doc'
