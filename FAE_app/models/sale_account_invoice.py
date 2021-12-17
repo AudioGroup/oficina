@@ -28,9 +28,12 @@ class AccountMoveReversal(models.TransientModel):
             document_type_dest = 'NC'
         elif move.move_type == 'out_refund' and move.x_state_dgt not in ('2', 'FI'):
             document_type_dest = 'ND'
-        
+        name = None
+        if move.x_state_dgt != '1':
+            name = move._compute_name_value(move.company_id.id, 'out_refund')
+
         data =  {
-            'name': '/',
+            'name': name if name else '/',
             'ref': _('Reversal of: %(move_name)s, %(reason)s', move_name=move.name, reason=self.reason)
                    if self.reason
                    else _('Reversal of: %s', move.name),
@@ -379,11 +382,11 @@ class FaeAccountInvoice(models.Model):
 
     @api.model
     def compute_name_value_temp(self):
-        if self.is_invoice(include_receipts=True) and self.name[:5] != 'TEMP-' and (not self.x_sequence or self.name == '/'):
+        if self.is_invoice(include_receipts=True) and self.name[:5] != 'MOVE-' and (not self.x_sequence or self.name == '/'):
             seq_code = 'xfae_temporal_number'
             values = {}
             values['name'] = 'xFAE - Temporal Number for FAE'
-            values['prefix'] = 'TEMP-'
+            values['prefix'] = 'MOVE-'
             sequence = self.env['ir.sequence'].search([('code', '=', seq_code), ('company_id', '=', self.company_id.id)])
             if not sequence:
                 values.update({'company_id': self.company_id.id,
@@ -396,38 +399,46 @@ class FaeAccountInvoice(models.Model):
             self.name = sequence.next_by_id()
 
     @api.model
+    def _compute_name_value(self, company_id, move_type):
+        seq_code = None
+        values = {}
+        name = None
+        if move_type == 'out_refund':
+            seq_code = 'xfae_number_internal_invoice_rev'
+            values['name'] = 'xFAE - Number for Internal Reversal Invoice'
+            values['prefix'] = 'RINV-'
+        elif 'out_' in move_type:
+            seq_code = 'xfae_number_internal_invoice'
+            values['name'] = 'xFAE - Number for Internal Invoice'
+            values['prefix'] = 'INV-'
+        elif move_type == 'in_refund':
+            seq_code = 'xfae_number_internal_bill_rev'
+            values['name'] = 'xFAE - Number for Internal Reversal Bill'
+            values['prefix'] = 'RBILL-'
+        elif 'in_' in move_type:
+            seq_code = 'xfae_number_internal_bill'
+            values['name'] = 'xFAE - Number for Internal Bill'
+            values['prefix'] = 'BILL-'
+        if seq_code:
+            sequence = self.env['ir.sequence'].search([('code', '=', seq_code), ('company_id', '=', company_id)])
+            if not sequence:
+                values.update({'company_id': company_id,
+                               'code': seq_code,
+                               'active': True,
+                               'padding': 6,
+                               'number_next': 1,
+                               'number_increment': 1})
+                sequence = self.env['ir.sequence'].sudo().create(values)
+            name = sequence.next_by_id()
+        return name
+
+    @api.model
     def compute_name_value(self):
         if self.is_invoice(include_receipts=True) and self.name == '/' \
               and (not self.x_document_type or (self.is_purchase_document() and not self.x_fae_incoming_doc_id)):
-            seq_code = None
-            values = {}
-            if self.move_type == 'out_refund':
-                seq_code = 'xfae_number_internal_invoice_rev'
-                values['name'] = 'xFAE - Number for Internal Reversal Invoice'
-                values['prefix'] = 'RINV-'
-            elif 'out_' in self.move_type:
-                seq_code = 'xfae_number_internal_invoice'
-                values['name'] = 'xFAE - Number for Internal Invoice'
-                values['prefix'] = 'INV-'
-            elif self.move_type == 'in_refund':
-                seq_code = 'xfae_number_internal_bill_rev'
-                values['name'] = 'xFAE - Number for Internal Reversal Bill'
-                values['prefix'] = 'RBILL-'
-            elif 'in_' in self.move_type:
-                seq_code = 'xfae_number_internal_bill'
-                values['name'] = 'xFAE - Number for Internal Bill'
-                values['prefix'] = 'BILL-'
-            if seq_code:
-                sequence = self.env['ir.sequence'].search([('code', '=', seq_code), ('company_id', '=', self.company_id.id)])
-                if not sequence:
-                    values.update({'company_id': self.company_id.id,
-                                   'code': seq_code,
-                                   'active': True,
-                                   'padding': 6,
-                                   'number_next': 1,
-                                   'number_increment': 1})
-                    sequence = self.env['ir.sequence'].sudo().create(values)
-                self.name = sequence.next_by_id()
+            name = self._compute_name_value( self.company_id.id, self.move_type)
+            if name:
+                self.name = name
 
     def action_post(self):
         # _logger.info('>> action_post: entro')
