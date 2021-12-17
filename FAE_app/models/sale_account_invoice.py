@@ -30,6 +30,7 @@ class AccountMoveReversal(models.TransientModel):
             document_type_dest = 'ND'
         
         data =  {
+            'name': '/',
             'ref': _('Reversal of: %(move_name)s, %(reason)s', move_name=move.name, reason=self.reason)
                    if self.reason
                    else _('Reversal of: %s', move.name),
@@ -200,7 +201,6 @@ class FaeAccountInvoice(models.Model):
             if rec.x_accounting_lock:
                 raise ValidationError('La contabilidad está cerrada a la fecha del movimiento: %s' % rec.name)
         return super(FaeAccountInvoice, self).unlink()
-
 
     @api.depends('state', 'x_sequence')
     def _compute_x_editable_generated_dgt(self):
@@ -819,9 +819,11 @@ class FaeAccountInvoice(models.Model):
                                             acum_line_tax -= tax_amount_exo  # resta la exoneracion al acumulado de impuesto
                                             tax["exoneracion"] = {"monto_exonera": tax_amount_exo,
                                                                   "porc_exonera": perc_exoneration}
-
                                         taxes[itax] = tax
 
+                                if acum_line_tax > 0.01 and (not taxes or not taxes[1].get('cod_tarifa_imp')):
+                                    raise UserError('La línea del producto "%s" tiene impuestos pero la configuración de este, no tiene los datos requeridos por la DGT'
+                                                    % (inv_line.product_id.name))
                                 line["impuesto"] = taxes
                                 line["impuestoNeto"] = round(acum_line_tax, 5)
 
@@ -882,8 +884,6 @@ class FaeAccountInvoice(models.Model):
                         gen_consecutivo = True
                         inv.message_post(message_type='notification'
                                          , body='FEC: Factura Electrónica de Compra fue rechazada por Hacienda. Adjuntos los XMLs'
-                                         # ,subtype=None
-                                         # ,parent_id=False
                                          , attachments=[[inv.x_xml_comprobante_fname, inv.x_xml_comprobante], [inv.x_xml_respuesta_fname, inv.x_xml_respuesta]]
                                          )
                         sequence = inv.company_id.x_sequence_FEC_id
@@ -902,12 +902,12 @@ class FaeAccountInvoice(models.Model):
                         elif inv.x_document_type == 'FEC':
                             sequence = inv.company_id.x_sequence_FEC_id
                         else:
-                            raise UserError('El tipo documento: %s no es válido' % (inv.x_document_type))
+                            raise ValidationError('El tipo documento: %s no es válido' % (inv.x_document_type))
 
                     if gen_consecutivo:
                         if not sequence:
                             inv.compute_name_value_temp()
-                            raise UserError('No han definido el consecutivo para el tipo de documento: %s' % (inv.x_document_type))
+                            raise ValidationError('No han definido el consecutivo para el tipo de documento: %s' % (inv.x_document_type))
                         # en un cliente hubo saltos, y hubo que tratar de identificar la causa
                         if sequence.number_next_actual >= 5:
                             consecutivo = sequence.get_next_char(sequence.number_next_actual - 1)
@@ -926,7 +926,7 @@ class FaeAccountInvoice(models.Model):
                             res = self._cr.dictfetchone()
                             if res and prev_x_sequence != res.get('x_sequence'):
                                 inv.compute_name_value_temp()
-                                raise UserError('Para el tipo de documento: %s se detectó un salto. No existe el número anterior: %s' % (inv.x_document_type, prev_x_sequence))
+                                raise ValidationError('Para el tipo de documento: %s se detectó un salto de numeración. No existe el número anterior: %s' % (inv.x_document_type, prev_x_sequence))
 
                         # Genera el consecutivo y clave de 50
                         consecutivo = sequence.next_by_id()
@@ -935,7 +935,8 @@ class FaeAccountInvoice(models.Model):
                         inv.x_sequence = jdata.get('consecutivo')
                         inv.name = inv.x_sequence
                         inv.payment_reference = None
-
+                    # se considera importante registra en el LOG la generación de la clave de hacienda
+                    _logger.info('>> generate_xml_and_send: Account_move id: %s generó clave: %s ', str(inv.id), inv.x_electronic_code50)
                     #
                     total_servicio_gravado = round(total_servicio_gravado, 5)
                     total_servicio_exento = round(total_servicio_exento, 5)
@@ -1002,15 +1003,23 @@ class FaeAccountInvoice(models.Model):
 
                 if 200 <= response_status <= 299:
                     inv.x_state_dgt = 'PRO'
-                    inv.message_post(subject='Note', body='Documento ' + inv.x_sequence + ' enviado a la DGT')
-
+                    inv.message_post(subject='Note',
+                                     body='Documento ' + inv.x_sequence + ' enviado a la DGT.\n' +
+                                          'Clave: ' + inv.x_electronic_code50
+                                     )
                     time.sleep(4)  # espera 4 segundos antes de consultar por el status de hacienda
                     inv.sudo().consulta_status_doc_enviado()
 
                 elif inv.x_state_dgt != '1':
+                    if not inv._origin.x_electronic_code50 and inv.x_electronic_code50:
+                        inv.message_post(subject='notification', body='Clave Hacienda: ' + inv.x_electronic_code50)
+                    elif inv._origin.x_electronic_code50 and not inv.x_electronic_code50:
+                        inv.message_post(subject='notification', body='Clave Hacienda Anterior: ' + inv._origin.x_electronic_code50)
+                    elif inv._origin.x_electronic_code50 != inv.x_electronic_code50:
+                        inv.message_post(subject='notification', body='Clave Hacienda: ' + inv.x_electronic_code50)
                     if response_text.find('ya fue recibido anteriormente') != -1:
                         inv.x_state_dgt = 'PRO'
-                        inv.message_post(subject='Error', body='DGT: Documento recibido anteriormente, queda en espera de respuesta de hacienda')
+                        inv.message_post(subject='Error', body='DGT: Documento recibido anteriormente, queda en espera de respuesta de hacienda.')
                     elif inv.x_error_count > 10:
                         inv.message_post(subject='Error', body='DGT: ' + response_text)
                         inv.x_state_dgt = 'ERR'
@@ -1021,6 +1030,9 @@ class FaeAccountInvoice(models.Model):
                         inv.message_post(subject='Error', body='DGT: status: %s, text: %s ' % (response_status, response_text))
                         # _logger.error('>> generate_xml_and_send_dgt: Invoice: %s  Status: %s Error sending XML: %s' % (inv.x_electronic_code50, response_status, response_text))
 
+            except UserError as error:
+                # _logger.error('>> generate_xml_and_send_dgt.UserError: %s' % str(error))  # no se registra en el Log, porque el raise lo hace
+                raise UserError('>> '+str(error))
             except Exception as error:
                 inv.message_post(subject='Error',
                                  body='generate_xml_and_send_dgt.exception:  Aviso!.\n Error : ' + str(error))
@@ -1148,7 +1160,7 @@ class FaeAccountInvoice(models.Model):
         return
         # no se ejecuta hasta que este liberado
         if ((not self.x_fae_incoming_doc_id or not self.x_document_type or self.x_document_type != 'FE')
-                or not self.company_id.x_load_bill_xml_lines):
+            or not self.company_id.x_load_bill_xml_lines):
             return
         if not self.x_fae_incoming_doc_id.issuer_xml_doc:
             return
