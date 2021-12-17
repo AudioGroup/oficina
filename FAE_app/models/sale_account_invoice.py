@@ -6,7 +6,7 @@ import datetime
 import time
 import pytz
 import json
-# from xml.dom import minidom
+
 from lxml import etree
 
 from . import fae_utiles
