@@ -31,6 +31,8 @@ class AccountMoveReversal(models.TransientModel):
         name = None
         if move.x_state_dgt != '1':
             name = move._compute_name_value(move.company_id.id, 'out_refund')
+        else:
+            name = move._compute_name_value_temp(move.company_id.id)
 
         data =  {
             'name': name if name else '/',
@@ -381,22 +383,27 @@ class FaeAccountInvoice(models.Model):
                     self.x_reference_document_type_id = rec.id
 
     @api.model
+    def _compute_name_value_temp(self, company_id):
+        seq_code = 'xfae_temporal_number'
+        values = {}
+        values['name'] = 'xFAE - Temporal Number for FAE'
+        values['prefix'] = 'MOVE-'
+        sequence = self.env['ir.sequence'].search([('code', '=', seq_code), ('company_id', '=', company_id)])
+        if not sequence:
+            values.update({'company_id': company_id,
+                           'code': seq_code,
+                           'active': True,
+                           'padding': 6,
+                           'number_next': 1,
+                           'number_increment': 1})
+            sequence = self.env['ir.sequence'].sudo().create(values)
+        name = sequence.next_by_id()
+        return name
+
+    @api.model
     def compute_name_value_temp(self):
         if self.is_invoice(include_receipts=True) and self.name[:5] != 'MOVE-' and (not self.x_sequence or self.name == '/'):
-            seq_code = 'xfae_temporal_number'
-            values = {}
-            values['name'] = 'xFAE - Temporal Number for FAE'
-            values['prefix'] = 'MOVE-'
-            sequence = self.env['ir.sequence'].search([('code', '=', seq_code), ('company_id', '=', self.company_id.id)])
-            if not sequence:
-                values.update({'company_id': self.company_id.id,
-                               'code': seq_code,
-                               'active': True,
-                               'padding': 6,
-                               'number_next': 1,
-                               'number_increment': 1})
-                sequence = self.env['ir.sequence'].sudo().create(values)
-            self.name = sequence.next_by_id()
+            self.name = self._compute_name_value_temp(self.company_id.id)
 
     @api.model
     def _compute_name_value(self, company_id, move_type):
