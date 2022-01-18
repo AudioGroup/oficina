@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+        <template id="fae_report_invoice_document_audiogroup_inherit_2" inherit_id="FAE_app.fae_report_invoice_document_inherited" priority="20">
+        <xpath expr="//tr/td[@id='h4_address_data']" position="replace">
+             <td>
+                <span t-if="o.x_delivery_address_sale_order" t-field="o.x_delivery_address_sale_order"/>
+             </td>
+        </xpath>
+    </template>
+
+    <template id="fae_report_invoice_document_audiogroup_inherit" inherit_id="audiogroup.fae_report_invoice_document_audiogroup">
+        <xpath expr="//tbody/tr/t/td/span[@t-field='l.name']" position="after">
+           <t t-if="o.x_document_type=='FEE'">
+                <span>Partida Aramcelaria: </span>
+                <span t-if="l.product_id.x_tariff_heading" t-field="l.product_id.x_tariff_heading"/>
+           </t>
+        </xpath>
+    </template>
+
+</odoo>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="report_saleorder_document_audiogroup_inherit" inherit_id="audiogroup.report_saleorder_document_audiogroup">
+        <xpath expr="//t/div/div/div/div[@class='col-9 ']" position="replace">
+            <div  class="col-9 ">
+                <span t-if="doc.x_delivery_address" t-field="doc.x_delivery_address"/>
+            </div>
+        </xpath>
+    </template>
+
+</odoo>
