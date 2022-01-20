@@ -192,6 +192,8 @@ class FaeAccountInvoice(models.Model):
     x_show_reset_to_draft_button = fields.Boolean(compute='_compute_x_show_reset_to_draft_button')
     x_show_generate_xml_button = fields.Boolean(compute='_compute_x_show_generate_xml_button')
 
+    x_credit_notes = fields.Char(string='Notas de Crédito', compute='_compute_reverse_moves')
+
     x_partner_vat = fields.Char(related='partner_id.vat')
     x_fae_incoming_doc_id = fields.Many2one("xfae.incoming.documents", string="Doc.Electrónico",
                                         required=False, 
@@ -206,6 +208,20 @@ class FaeAccountInvoice(models.Model):
             if rec.x_accounting_lock:
                 raise ValidationError('La contabilidad está cerrada a la fecha del movimiento: %s' % rec.name)
         return super(FaeAccountInvoice, self).unlink()
+
+    @api.depends('reversal_move_id')
+    def _compute_reverse_moves(self):
+        for rec in self:
+            notes = ''
+            cont = 0
+            for credit_note in rec.reversal_move_id:
+                if cont==0:
+                    notes = str(credit_note.x_sequence)
+                else:
+                    notes = notes + ', '+ str(credit_note.x_sequence)
+                cont+=1
+            rec.x_credit_notes = notes
+
 
     @api.depends('state', 'x_sequence')
     def _compute_x_editable_generated_dgt(self):
