@@ -10,7 +10,7 @@
     </template>
 
     <template id="fae_report_invoice_document_audiogroup_inherit" inherit_id="audiogroup.fae_report_invoice_document_audiogroup">
-        <xpath expr="//tbody/tr/t/td/span[@t-field='l.name']" position="after">
+        <xpath expr="//tbody/tr/t/td/span[@t-field='l.name ']" position="after">
            <t t-if="o.x_document_type=='FEE'">
                 <span> Partida Arancelaria: </span>
                 <span t-if="l.product_id.x_tariff_heading" t-field="l.product_id.x_tariff_heading"/>
