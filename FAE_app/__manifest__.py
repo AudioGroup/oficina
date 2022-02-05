@@ -13,7 +13,7 @@
     'depends': ['base', 'sale', 'product', 'contacts', 'account', ],
     'data': [
         'views/assets.xml',
-        'views/cabys_company_views.xml',        
+        'views/cabys_company_views.xml',
         'views/res_company_views.xml',
         'views/identification_type_views.xml',
         'views/division_geopolitic_views.xml',

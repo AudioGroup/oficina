@@ -200,7 +200,7 @@ class FaeAccountInvoice(models.Model):
                                         domain="[('document_type','=',x_document_type),('issuer_identification_num','=',x_partner_vat),('ready2accounting','=',True),('invoice_id','=',False)]",
                                         )
 
-    _sql_constraints = [('x_electronic_code50_uniq', 'unique (company_id, x_electronic_code50)',
+    _sql_constraints = [('x_electronic_code50_uniq', 'unique (x_electronic_code50, company_id)',
                         "La clave numérica deben ser única"), ]
 
     def unlink(self):
@@ -462,6 +462,8 @@ class FaeAccountInvoice(models.Model):
             name = self._compute_name_value( self.company_id.id, self.move_type)
             if name:
                 self.name = name
+        elif self.is_purchase_document() and self.x_fae_incoming_doc_id and self.name != self.x_fae_incoming_doc_id.issuer_sequence:
+            self.name = self.x_fae_incoming_doc_id.issuer_sequence
 
     def action_post(self):
         # _logger.info('>> action_post: entro')
@@ -1153,41 +1155,21 @@ class FaeAccountInvoice(models.Model):
     def action_send_mail_fae(self):
         self.ensure_one()
 
-        if not self.is_sale_document():
+        if not self.is_sale_document() or not self.x_xml_respuesta_fname or self.x_state_dgt != '1':
             return
 
-        email_template_id = self.env.ref('FAE_app.fae_email_template_invoice', raise_if_not_found=False).id
-
-        if email_template_id and self.partner_id:
-            new_state_email = self.x_state_email
-            template = self.env['mail.template'].browse(email_template_id)
-            partner_email = self.partner_id.email
-            if not partner_email:
-                new_state_email = 'SC'
-            else:
-                attachment = self.env['ir.attachment'].search([('res_model', '=', 'account.move'),
-                                                               ('res_id', '=', self.id),
-                                                               ('res_field', '=', 'x_xml_comprobante')],
-                                                              order='id desc', limit=1)
-                if attachment:
-                    attachment.name = self.x_xml_comprobante_fname
-                    attachment_resp = self.env['ir.attachment'].search([('res_model', '=', 'account.move'),
-                                                                        ('res_id', '=', self.id),
-                                                                        ('res_field', '=', 'x_xml_respuesta')],
-                                                                       order='id desc', limit=1)
-                    if attachment_resp:
-                        attachment_resp.name = self.x_xml_respuesta_fname
-                        template.attachment_ids = [(6, 0, [attachment.id, attachment_resp.id])]
-
-                    template.send_mail(self.id, force_send=True)
-                    new_state_email = 'E'
-                    self.message_post(subject='Note', body='Documento ' + self.x_sequence + ' enviado al correo: ' + self.partner_id.email)
-                else:
-                    self.message_post(subject='Error', body='Archivos de XMLs y PDF del documento ' + self.x_sequence + ' no pudieron ser enviados al correo: ' + str(partner_email))
-                    # raise UserError('XML del documento no ha sido generado')
-
+        try:
+            new_state_email = fae_utiles.send_mail_fae(self, 'FAE_app.fae_email_template_invoice')
+            if new_state_email == 'E':
+                self.message_post(subject='Note', body='Documento ' + self.x_sequence + ' enviado al correo: ' + self.partner_id.email )
             if not self.x_state_email or (self.x_state_email == 'SC' and new_state_email == 'E'):
                 self.x_state_email = new_state_email
+        except UserError as error:
+            raise UserError('>> '+str(error))
+        except Exception as error:
+            self.message_post(subject='Error', body='Archivos de XMLs y PDF del documento ' + self.x_sequence + ' no pudieron ser enviados al correo del cliente')
+            # raise UserError('XML del documento no ha sido generado')
+
 
     # carga lineas del XML para facturas de Compra
     def load_xml_lines(self):

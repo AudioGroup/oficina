@@ -273,20 +273,26 @@ def gen_clave_hacienda(doc, tipo_documento, consecutivo, sucursal_id, terminal_i
 
     # fec_doc = str(doc.invoice_date.day).zfill(2) + str(doc.invoice_date.month).zfill(2) + str(doc.invoice_date.year)[2:]
     # x_issue_date format yyyy-mm-ddThh24:mi:ss
+    if doc._name == 'pos.order':
+        sf_doc = doc.date_order.strftime('%Y%m%d')
+    else:
+        sf_doc = doc.date.strftime('%Y%m%d')
     fec_doc = doc.x_issue_date[8:10] + doc.x_issue_date[5:7] + doc.x_issue_date[2:4]
 
-    phone = phonenumbers.parse(doc.company_id.phone, doc.company_id.country_id and doc.company_id.country_id.code or 'CR')
-    codigo_pais = str(phone and phone.country_code or 506)
-    
+    codigo_pais = '506'
     clave_hacienda = codigo_pais + fec_doc + cedula_emisor[:12] + consecutivo20 + situacion_comprobante 
 
     # calcula el número de seguridad
     clave_hash = clave_hacienda[16:] + clave_hacienda[0:16]
-    num_seguridad = 0
-    for i in range(len(clave_hash)):
-        if 48 <= ord(clave_hash[i]) <= 57:      # 0..9
-            num_seguridad += (i+1)**int(clave_hash[i])
-    num_seguridad = (num_seguridad % 99999998) + 1
+    if sf_doc < '20220204':
+        num_seguridad = (abs(hash(clave_hash)) % 99999998) + 1
+    else:
+        num_seguridad = 0
+        for i in range(len(clave_hash)):
+            if 48 <= ord(clave_hash[i]) <= 57:      # 0..9
+                num_seguridad += (i+1)**int(clave_hash[i])
+        num_seguridad = (num_seguridad % 99999998) + 1
+
     clave_hacienda = clave_hacienda + str(num_seguridad).zfill(8) 
 
     return {'consecutivo': consecutivo20, 'clave_hacienda': clave_hacienda }
@@ -853,6 +859,8 @@ def parser_xml(identification_type_obj, company_obj, currency_obj, origin, docxm
     clave_hacienda = doc.getElementsByTagName('Clave')[0].childNodes[0].data;
     document_type = None
     issuer_identification_type = None
+    identification_type_id = None
+    identification_number = None
     if clave_hacienda:
         document_type = clave_hacienda[29:31] # numero del tipo de documento
     values = {}
@@ -866,16 +874,29 @@ def parser_xml(identification_type_obj, company_obj, currency_obj, origin, docxm
 
         tag_ResumenFactura = doc.getElementsByTagName('ResumenFactura')[0]
         tag_Receptor = doc.getElementsByTagName('Receptor')[0]
-        identification_type = tag_Receptor.getElementsByTagName('Tipo')[0].childNodes[0].data
-        identification_number = tag_Receptor.getElementsByTagName('Numero')[0].childNodes[0].data
+        if tag_Receptor:
+            tag_identif_receptor = getElementTag(tag_Receptor, 'Identificacion')
+            if tag_identif_receptor:
+                identification_type = getElementTag_data(tag_identif_receptor.getElementsByTagName('Tipo'))
+                identification_number = getElementTag_data(tag_identif_receptor.getElementsByTagName('Numero'))
 
-        company_id = None
-        company = company_obj.filtered(lambda c: c.vat == identification_number)
-        for cia in company:
-            company_id = cia.id
+                company_id = None
+                company = company_obj.filtered(lambda c: c.vat == identification_number)
+                for cia in company:
+                    company_id = cia.id
 
-        rec = identification_type_obj.filtered(lambda t: t.code == identification_type)        
-        identification_type_id = (rec and rec.id or None)
+                rec = identification_type_obj.filtered(lambda t: t.code == identification_type)
+                identification_type_id = (rec and rec.id or None)
+            elif document_type == 'NC':
+                # La documento no trae información de la identificación del receptor
+                tag_info_referencia = getElementTag(doc, 'InformacionReferencia')
+                if tag_info_referencia:
+                    clave_hacienda_ref = getElementTag_data(tag_info_referencia.getElementsByTagName('Numero'))
+                    incoming_doc = company_obj.env['xfae.incoming.documents'].search([('issuer_electronic_code50', '=', clave_hacienda_ref)], limit=1)
+                    if incoming_doc:
+                        company_id = incoming_doc.company_id.id
+                        identification_number = incoming_doc.identification_number
+                        identification_type_id = incoming_doc.issuer_identification_type_id.id
 
         issuer_identification_type = tag_issuer.getElementsByTagName('Tipo')[0].childNodes[0].data
 
@@ -884,7 +905,7 @@ def parser_xml(identification_type_obj, company_obj, currency_obj, origin, docxm
             currency = 'CRC'
         else:
             tag_tipoMoneda = tag_tipoMoneda[0]
-            currency = getElementTag_data( tag_tipoMoneda.getElementsByTagName('CodigoMoneda') ) 
+            currency = getElementTag_data(tag_tipoMoneda.getElementsByTagName('CodigoMoneda') )
             if not currency:
                 currency = 'CRC'
         rec = currency_obj.filtered(lambda a: a.name == currency)        
@@ -917,13 +938,13 @@ def parser_xml(identification_type_obj, company_obj, currency_obj, origin, docxm
     elif clave_hacienda and es_mensaje_hacienda:
         # El archivo es un Mensaje de Hacienda
         # _logger.info('>> fae_utiles.parser_xml: clave_hacienda %s   es_mensaje_hacienda', clave_hacienda)
-        identification_number = doc.getElementsByTagName('NumeroCedulaReceptor')[0].childNodes[0].data
+        identification_number = getElementTag_data(doc.getElementsByTagName('NumeroCedulaReceptor'))
         company_id = None
         company = company_obj.filtered(lambda c: c.vat == identification_number)
         for cia in company:
             company_id = cia.id
 
-        issuer_identification_type = doc.getElementsByTagName('TipoIdentificacionEmisor')[0].childNodes[0].data
+        issuer_identification_type = getElementTag_data(doc.getElementsByTagName('TipoIdentificacionEmisor'))
 
         values = {
             'company_id': company_id,
@@ -1046,9 +1067,55 @@ def send_xml_acepta_rechazo(doc, xml, fae_mode):
     except ImportError:
         raise Warning('Error tratando de enviar el Mensajes de Aceptación o Rechazo a Hacienda')
 
+
+# Envia email a un partner los documentos del documento electrónico
+def send_mail_fae(inv, full_mail_template):
+    new_state_email = None
+
+    # email_template = inv.env.ref('FAE_app.fae_email_template_invoice', raise_if_not_found=False)
+    email_template = inv.env.ref(full_mail_template, raise_if_not_found=False)
+
+    if email_template and inv.partner_id:
+        partner_email = inv.partner_id.email
+        if not partner_email:
+            new_state_email = 'SC'
+        else:
+            attachment = inv.env['ir.attachment'].search([('res_model', '=', inv._name),
+                                                           ('res_id', '=', inv.id),
+                                                           ('res_field', '=', 'x_xml_comprobante')],
+                                                          order='id desc', limit=1)
+            if attachment:
+                attachment.name = inv.x_xml_comprobante_fname
+                attachment_resp = inv.env['ir.attachment'].search([('res_model', '=', inv._name),
+                                                                    ('res_id', '=', inv.id),
+                                                                    ('res_field', '=', 'x_xml_respuesta')],
+                                                                   order='id desc', limit=1)
+                if attachment_resp:
+                    attachment_resp.name = inv.x_xml_respuesta_fname
+                    email_template.attachment_ids = [(6, 0, [attachment.id, attachment_resp.id])]
+
+                email_template.send_mail(inv.id, force_send=True)
+                # 2022-0129: Las siguientes 2 líneas se puso porque odoo hizo una actualización en esta semana
+                #            que provocó que se perdieran la asociación de los attachment con los documentos
+                attachment.write({'res_model': inv._name, 'res_id': inv.id})
+                if attachment_resp:
+                    attachment_resp.write({'res_model': inv._name, 'res_id': inv.id})
+                # << fin del parche por actualización
+                new_state_email = 'E'
+            else:
+                raise UserError('XML del documento no ha sido generado')
+    return new_state_email
+
+# Devuelve el Tag (nodo) solicitado
+def getElementTag(xmldoc, tag_name):
+    xml_tag = xmldoc.getElementsByTagName(tag_name)
+    if xml_tag:
+        xml_tag = xml_tag[0]
+    return xml_tag
+
 # Devuelve el data de un Tag obtenido con el metodo: getElementsByTagName
 def getElementTag_data(xmlTag):
     data = None
-    if xmlTag:
+    if xmlTag and xmlTag[0].childNodes:
         data = xmlTag[0].childNodes[0].data
     return data

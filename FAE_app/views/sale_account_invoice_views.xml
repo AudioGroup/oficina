@@ -52,7 +52,7 @@
             <xpath expr="//button[@name='button_draft']" position="after">
                 <field name="x_move_editable" invisible="1" />
                 <field name="x_show_generate_xml_button" invisible="1" />
-                <button name="generate_xml_and_send_dgt_manual" type="object" string="Generar XML" colspan="2" 
+                <button name="generate_xml_and_send_dgt_manual" type="object" string="Generar XML" colspan="2"
                     attrs="{'invisible':[('x_show_generate_xml_button','=',False)]}"/>
                 <button name="consulta_status_doc_enviado" type="object" string="Consultar Hacienda" colspan="2" 
                     attrs="{'invisible':['|',('x_state_dgt','=', False),('x_state_dgt','not in',['PRO','FI'])]}"/>
